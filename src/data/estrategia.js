@@ -30,3 +30,13 @@ export const CRIPTO_SUB = {
   BTC: { meta: 0.70 },
   ETH: { meta: 0.30 },
 };
+
+// Mapa consolidado de subclasses por classe (metas padrão, editáveis no app).
+// Ações e FIIs têm uma única subclasse implícita (100%).
+export const SUB_METAS = {
+  RF:            RF_SUB,
+  Internacional: INTL_SUB,
+  Cripto:        CRIPTO_SUB,
+  Ações:         { 'Ações': { meta: 1 } },
+  FIIs:          { 'FIIs':  { meta: 1 } },
+};

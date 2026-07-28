@@ -1,10 +1,13 @@
 import { useState, useMemo, useRef } from 'react';
-import { MACRO, RF_SUB } from './data/estrategia';
+import { MACRO } from './data/estrategia';
 import useCotacoes from './hooks/useCotacoes';
 import useAtivos from './hooks/useAtivos';
+import useEstrategia from './hooks/useEstrategia';
 
 const fmt    = (v) => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtPct = (v) => ((v || 0) * 100).toFixed(1) + '%';
+const COR    = (c) => MACRO[c]?.cor ?? 'var(--text-dim)';
+const CLASSES = ['RF', 'Ações', 'FIIs', 'Internacional', 'Cripto'];
 
 /* ── helpers visuais ── */
 function DesvioChip({ desvio }) {
@@ -23,10 +26,10 @@ function Barra({ atual, meta, cor }) {
 
 /* ══════════════════════════════════════ */
 export default function App() {
-  const [aporte, setAporte]       = useState('');
-  const [showDetalhe, setDetalhe] = useState(false);
+  const [aporte, setAporte] = useState('');
   const { ativos, updateQty, addAtivo, removeAtivo, resetAtivos, importAtivos } = useAtivos();
   const { getPreco, tesouroPrices, setTesouroPrice, loading, erro, ultimaAtualizacao, atualizar } = useCotacoes(ativos);
+  const { macro: macroMetas, sub: subMetas, updateMacro, updateSub, resetMetas, macroSoma } = useEstrategia();
 
   const valoresPorAtivo = useMemo(() =>
     ativos.map(a => ({ ...a, preco: getPreco(a), valor: getPreco(a) * a.qty })),
@@ -50,6 +53,20 @@ export default function App() {
     }
     return m;
   }, [valoresPorAtivo]);
+
+  // subclasses de uma classe, ordenadas da mais abaixo da meta para a menos
+  const subclassesDe = (classe) => {
+    const defs = subMetas[classe] || {};
+    const valorClasse = porClasse[classe] || 0;
+    return Object.entries(defs).map(([sub, meta]) => {
+      const valorSub  = porSubclasse[`${classe}::${sub}`] || 0;
+      const pctDentro = valorClasse > 0 ? valorSub / valorClasse : 0;
+      const ativosNaSub = valoresPorAtivo
+        .filter(a => a.classe === classe && a.subclasse === sub)
+        .sort((a, b) => a.valor - b.valor);
+      return { sub, meta, valorSub, pctDentro, desvio: pctDentro - meta, ativos: ativosNaSub };
+    }).sort((a, b) => a.desvio - b.desvio);
+  };
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', minHeight: '100vh' }} className="safe-b">
@@ -79,8 +96,7 @@ export default function App() {
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <button className="btn btn-sm" onClick={atualizar} disabled={loading}
-              style={{ opacity: loading ? .6 : 1 }}>
+            <button className="btn btn-sm" onClick={atualizar} disabled={loading} style={{ opacity: loading ? .6 : 1 }}>
               {loading ? '⏳ buscando…' : '↻ Atualizar cotações'}
             </button>
             {ultimaAtualizacao && (
@@ -92,56 +108,23 @@ export default function App() {
           {erro && <div style={{ color: 'var(--warn)', fontSize: 13 }}>⚠ {erro}</div>}
         </section>
 
-        {/* ── Onde aportar (rebalanceamento macro) ── */}
+        {/* ── Onde aportar (com drill-down por subclasse/ativo) ── */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <h2 style={{ margin: '4px 2px', fontSize: 15, color: 'var(--text-dim)' }}>
             {aporteNum > 0 ? 'Onde aportar' : 'Alocação por classe'}
           </h2>
-          {Object.entries(MACRO).map(([classe, { meta, cor }]) => {
-            const valorAtual = porClasse[classe] || 0;
-            const pctAtual   = totalCarteira > 0 ? valorAtual / totalCarteira : 0;
-            const desvio     = pctAtual - meta;
-            const gap        = Math.max(0, meta * totalCarteira - valorAtual);
-            return (
-              <div key={classe} className="card" style={{ padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 3, background: cor }} />
-                    {classe}
-                  </span>
-                  <DesvioChip desvio={desvio} />
-                </div>
-                <Barra atual={pctAtual} meta={meta} cor={cor} />
-                <div className="num" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, color: 'var(--text-mute)', fontSize: 13 }}>
-                  <span>Atual <strong style={{ color: 'var(--text-dim)' }}>{fmtPct(pctAtual)}</strong> · {fmt(valorAtual)}</span>
-                  <span>Meta {fmtPct(meta)}</span>
-                </div>
-                {gap > 0 && (
-                  <div className="num" style={{ marginTop: 10, background: 'rgba(70,209,158,.1)', border: '1px solid rgba(70,209,158,.25)', borderRadius: 9, padding: '8px 10px', fontSize: 14, color: 'var(--good)', fontWeight: 600 }}>
-                    {aporteNum > 0
-                      ? `↑ Aportar ${fmt(Math.min(gap, aporteNum))}`
-                      : `Faltam ${fmt(gap)} para a meta`}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {CLASSES.map((classe) => (
+            <ClasseCard key={classe}
+              classe={classe} meta={macroMetas[classe] || 0} cor={COR(classe)}
+              valorAtual={porClasse[classe] || 0} totalCarteira={totalCarteira}
+              aporteNum={aporteNum} subclasses={subclassesDe(classe)}
+              tesouroPrices={tesouroPrices} setTesouroPrice={setTesouroPrice} />
+          ))}
         </section>
 
-        {/* ── Detalhe por subclasse (recolhível) ── */}
-        <section className="card" style={{ padding: 0 }}>
-          <button className="btn btn-ghost" onClick={() => setDetalhe(v => !v)}
-            style={{ width: '100%', justifyContent: 'space-between', border: 'none', minHeight: 52, padding: '0 16px', fontWeight: 700 }}>
-            <span>Detalhe: Renda Fixa e Internacional</span>
-            <span style={{ color: 'var(--text-mute)' }}>{showDetalhe ? '▲' : '▼'}</span>
-          </button>
-          {showDetalhe && (
-            <div style={{ padding: '0 14px 14px' }}>
-              <Subclasses porSubclasse={porSubclasse} porClasse={porClasse}
-                valoresPorAtivo={valoresPorAtivo} tesouroPrices={tesouroPrices} setTesouroPrice={setTesouroPrice} />
-            </div>
-          )}
-        </section>
+        {/* ── Metas de alocação (editável) ── */}
+        <MetasEditor macroMetas={macroMetas} subMetas={subMetas}
+          updateMacro={updateMacro} updateSub={updateSub} resetMetas={resetMetas} macroSoma={macroSoma} />
 
         {/* ── Meus ativos ── */}
         <AtivosSection
@@ -153,65 +136,169 @@ export default function App() {
   );
 }
 
-/* ══ Detalhe: subclasses RF + Internacional ══ */
-function Subclasses({ porSubclasse, porClasse, valoresPorAtivo, tesouroPrices, setTesouroPrice }) {
-  const blocos = [
-    { titulo: 'Renda Fixa',    classe: 'RF',            subs: RF_SUB },
-    { titulo: 'Internacional', classe: 'Internacional', subs: { Stock: { meta: 0.50 }, REITs: { meta: 0.15 }, Bonds: { meta: 0.35 } } },
-  ];
+/* ══ Card de classe com drill-down ══ */
+function ClasseCard({ classe, meta, cor, valorAtual, totalCarteira, aporteNum, subclasses, tesouroPrices, setTesouroPrice }) {
+  const [aberto, setAberto] = useState(false);
+  const pctAtual = totalCarteira > 0 ? valorAtual / totalCarteira : 0;
+  const desvio   = pctAtual - meta;
+  const gap      = Math.max(0, meta * totalCarteira - valorAtual);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {blocos.map(({ titulo, classe, subs }) => {
-        const valorClasse = porClasse[classe] || 0;
-        const cor = MACRO[classe]?.cor;
-        return (
-          <div key={classe}>
-            <h3 className="num" style={{ color: cor, margin: '0 0 10px', fontSize: 14 }}>{titulo} — {fmt(valorClasse)}</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {Object.entries(subs).map(([sub, { meta }]) => {
-                const valorSub    = porSubclasse[`${classe}::${sub}`] || 0;
-                const pctDentro   = valorClasse > 0 ? valorSub / valorClasse : 0;
-                const ativosNaSub = valoresPorAtivo.filter(a => a.classe === classe && a.subclasse === sub);
-                return (
-                  <div key={sub} style={{ background: 'var(--surface-2)', borderRadius: 11, padding: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>{sub}</span>
-                      <DesvioChip desvio={pctDentro - meta} />
+    <div className="card" style={{ padding: 14 }}>
+      <button className="btn btn-ghost" onClick={() => setAberto(v => !v)}
+        style={{ width: '100%', padding: 0, minHeight: 0, border: 'none', display: 'block', textAlign: 'left' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: cor }} />
+            {classe}
+            <span style={{ color: 'var(--text-mute)', fontSize: 12, fontWeight: 500 }}>{aberto ? '▲' : '▼'}</span>
+          </span>
+          <DesvioChip desvio={desvio} />
+        </div>
+      </button>
+      <Barra atual={pctAtual} meta={meta} cor={cor} />
+      <div className="num" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, color: 'var(--text-mute)', fontSize: 13 }}>
+        <span>Atual <strong style={{ color: 'var(--text-dim)' }}>{fmtPct(pctAtual)}</strong> · {fmt(valorAtual)}</span>
+        <span>Meta {fmtPct(meta)}</span>
+      </div>
+      {gap > 0 && (
+        <div className="num" style={{ marginTop: 10, background: 'rgba(70,209,158,.1)', border: '1px solid rgba(70,209,158,.25)', borderRadius: 9, padding: '8px 10px', fontSize: 14, color: 'var(--good)', fontWeight: 600 }}>
+          {aporteNum > 0 ? `↑ Aportar ${fmt(Math.min(gap, aporteNum))}` : `Faltam ${fmt(gap)} para a meta`}
+          {' '}<span style={{ color: 'var(--text-mute)', fontWeight: 500 }}>· toque para ver onde</span>
+        </div>
+      )}
+
+      {/* drill-down: subclasses ordenadas por quem está mais abaixo da meta */}
+      {aberto && (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {subclasses.map(({ sub, meta: metaSub, pctDentro, desvio: dSub, valorSub, ativos }) => {
+            const abaixo = dSub < -0.001;
+            const temSub = classe !== 'Ações' && classe !== 'FIIs'; // Ações/FIIs: subclasse única, não faz sentido detalhar %
+            return (
+              <div key={sub} style={{ background: 'var(--surface-2)', borderRadius: 11, padding: 12, borderLeft: `3px solid ${abaixo ? cor : 'transparent'}` }}>
+                {temSub && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>
+                        {sub} {abaixo && <span style={{ color: cor, fontSize: 11 }}>· comprar aqui</span>}
+                      </span>
+                      <DesvioChip desvio={dSub} />
                     </div>
-                    <Barra atual={pctDentro} meta={meta} cor={cor} />
+                    <Barra atual={pctDentro} meta={metaSub} cor={cor} />
                     <div className="num" style={{ fontSize: 12, color: 'var(--text-mute)', margin: '6px 0 8px' }}>
-                      {fmtPct(pctDentro)} / meta {fmtPct(meta)} — {fmt(valorSub)}
+                      {fmtPct(pctDentro)} / meta {fmtPct(metaSub)} — {fmt(valorSub)}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {ativosNaSub.length > 0 ? ativosNaSub.map(a => (
-                        <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
-                          <span style={{ color: 'var(--text-dim)' }}>{a.nome}</span>
-                          {a.tipo === 'tesouro' ? (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                              <span style={{ color: 'var(--text-mute)', fontSize: 12 }}>R$</span>
-                              <input className="input num" type="number" inputMode="decimal" value={tesouroPrices[a.id] ?? ''}
-                                onChange={e => setTesouroPrice(a.id, e.target.value)}
-                                style={{ width: 96, minHeight: 36, padding: '0 8px', fontSize: 14 }} />
-                            </span>
-                          ) : (
-                            <span className="num" style={{ color: 'var(--text-mute)' }}>{fmt(a.valor)}</span>
-                          )}
-                        </div>
-                      )) : <span style={{ color: 'var(--text-mute)', fontSize: 13 }}>sem ativos</span>}
+                  </>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {ativos.length > 0 ? ativos.map(a => (
+                    <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                      <span style={{ color: 'var(--text-dim)' }}>{a.nome}</span>
+                      {a.tipo === 'tesouro' ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span style={{ color: 'var(--text-mute)', fontSize: 12 }}>R$</span>
+                          <input className="input num" type="number" inputMode="decimal" value={tesouroPrices[a.id] ?? ''}
+                            onChange={e => setTesouroPrice(a.id, e.target.value)}
+                            style={{ width: 96, minHeight: 36, padding: '0 8px', fontSize: 14 }} />
+                        </span>
+                      ) : (
+                        <span className="num" style={{ color: 'var(--text-mute)' }}>{fmt(a.valor)}</span>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+                  )) : (
+                    <span style={{ color: abaixo ? cor : 'var(--text-mute)', fontSize: 13 }}>
+                      sem ativos cadastrados{abaixo ? ' — cadastre um para esta meta' : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {(!subclasses || subclasses.length === 0) && (
+            <span style={{ color: 'var(--text-mute)', fontSize: 13 }}>sem subclasses configuradas</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-/* ══ Meus ativos ══ */
-const CLASSES_LISTA  = ['RF', 'Ações', 'FIIs', 'Internacional', 'Cripto'];
+/* ══ Editor de metas de alocação ══ */
+function MetasEditor({ macroMetas, subMetas, updateMacro, updateSub, resetMetas, macroSoma }) {
+  const [aberto, setAberto] = useState(false);
+  const somaOk = Math.abs(macroSoma - 1) < 0.005;
+
+  return (
+    <section className="card" style={{ padding: 0 }}>
+      <button className="btn btn-ghost" onClick={() => setAberto(v => !v)}
+        style={{ width: '100%', justifyContent: 'space-between', border: 'none', minHeight: 52, padding: '0 16px', fontWeight: 700 }}>
+        <span>Metas de alocação</span>
+        <span style={{ color: 'var(--text-mute)' }}>{aberto ? '▲' : '▼'}</span>
+      </button>
+
+      {aberto && (
+        <div style={{ padding: '0 14px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* metas macro */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ color: 'var(--text-dim)', fontSize: 13, fontWeight: 600 }}>Por classe (% da carteira)</span>
+              <span className="num" style={{ fontSize: 12, color: somaOk ? 'var(--good)' : 'var(--warn)' }}>
+                soma {(macroSoma * 100).toFixed(0)}%{somaOk ? '' : ' ⚠'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {CLASSES.map(c => (
+                <MetaRow key={c} cor={COR(c)} label={c} value={macroMetas[c] || 0}
+                  onChange={pct => updateMacro(c, pct)} />
+              ))}
+            </div>
+          </div>
+
+          {/* metas subclasses (só onde faz sentido) */}
+          {['RF', 'Internacional', 'Cripto'].map(classe => {
+            const subs = subMetas[classe] || {};
+            const soma = Object.values(subs).reduce((s, v) => s + v, 0);
+            const ok = Math.abs(soma - 1) < 0.005;
+            return (
+              <div key={classe}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ color: COR(classe), fontSize: 13, fontWeight: 600 }}>{classe} — subclasses (% dentro da classe)</span>
+                  <span className="num" style={{ fontSize: 12, color: ok ? 'var(--good)' : 'var(--warn)' }}>
+                    soma {(soma * 100).toFixed(0)}%{ok ? '' : ' ⚠'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {Object.entries(subs).map(([sub, v]) => (
+                    <MetaRow key={sub} label={sub} value={v} onChange={pct => updateSub(classe, sub, pct)} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          <button className="btn btn-sm btn-ghost" onClick={() => { if (confirm('Restaurar as metas padrão?')) resetMetas(); }}
+            style={{ alignSelf: 'flex-start' }}>↺ Restaurar padrão</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MetaRow({ label, value, onChange, cor }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {cor && <span style={{ width: 9, height: 9, borderRadius: 3, background: cor, flexShrink: 0 }} />}
+      <span style={{ flex: 1, fontSize: 14 }}>{label}</span>
+      <input className="input num" type="number" inputMode="decimal"
+        value={Math.round((value || 0) * 1000) / 10}
+        onChange={e => onChange(e.target.value)}
+        style={{ width: 80, minHeight: 38, textAlign: 'right' }} />
+      <span style={{ color: 'var(--text-mute)', fontSize: 14, width: 14 }}>%</span>
+    </div>
+  );
+}
+
+/* ══ Meus ativos (com filtro e agrupamento) ══ */
 const SUBCLASSES_MAP = {
   RF:            ['Pós Pública','Híbrida Pública','Híbrida Privada','Pós Privada','Pré Pública','Pré Privada'],
   Ações:         ['Ações'],
@@ -232,6 +319,8 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, addAtiv
   const [editQty, setEditQty]   = useState({});
   const [showForm, setShowForm] = useState(false);
   const [novo, setNovo]         = useState(NOVO_BLANK);
+  const [filtro, setFiltro]     = useState('Todos');
+  const [agrupar, setAgrupar]   = useState(false);
   const fileRef                 = useRef(null);
 
   const handleQtyBlur = (id) => {
@@ -263,9 +352,9 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, addAtiv
     if (!file) return;
     try {
       const data  = JSON.parse(await file.text());
-      const lista = Array.isArray(data) ? data : data.ativos;
-      if (!Array.isArray(lista)) throw new Error('JSON não contém uma lista de ativos');
-      const limpos = lista.map((a) => ({
+      const raw   = Array.isArray(data) ? data : data.ativos;
+      if (!Array.isArray(raw)) throw new Error('JSON não contém uma lista de ativos');
+      const limpos = raw.map((a) => ({
         id:        String(a.id),
         nome:      String(a.nome ?? a.id),
         classe:    a.classe,
@@ -284,19 +373,66 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, addAtiv
     }
   };
 
-  const lista = [...valoresPorAtivo].sort((a, b) => b.valor - a.valor);
+  const classesPresentes = ['Todos', ...CLASSES.filter(c => ativos.some(a => a.classe === c))];
+  const filtrada = valoresPorAtivo.filter(a => filtro === 'Todos' || a.classe === filtro);
+  const ordenada = [...filtrada].sort((a, b) => b.valor - a.valor);
+
+  // agrupa por classe (na ordem de CLASSES) quando ligado
+  const grupos = agrupar
+    ? CLASSES.map(c => ({ classe: c, itens: ordenada.filter(a => a.classe === c) })).filter(g => g.itens.length)
+    : [{ classe: null, itens: ordenada }];
+
+  const renderCard = (a) => {
+    const cor     = COR(a.classe);
+    const pctCart = totalGeral > 0 ? a.valor / totalGeral : 0;
+    const qtyVal  = editQty[a.id] !== undefined ? editQty[a.id] : a.qty;
+    return (
+      <div key={a.id} className="card" style={{ padding: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: cor, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nome}</span>
+            </div>
+            <div style={{ color: 'var(--text-mute)', fontSize: 12, marginTop: 3 }}>
+              {a.classe} · {a.subclasse}{a.ticker ? ` · ${a.ticker}` : ''}
+            </div>
+          </div>
+          <button onClick={() => { if (confirm(`Remover ${a.nome}?`)) removeAtivo(a.id); }}
+            title="Remover" aria-label="Remover ativo"
+            style={{ background: 'none', border: 'none', color: 'var(--text-mute)', fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: 'var(--text-mute)', fontSize: 12 }}>Qtd</span>
+            <input className="input num" type="number" inputMode="decimal" value={qtyVal}
+              onChange={e => setEditQty(prev => ({ ...prev, [a.id]: e.target.value }))}
+              onBlur={() => handleQtyBlur(a.id)}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+              style={{ width: 110, minHeight: 40 }} />
+          </label>
+          <div className="num" style={{ textAlign: 'right' }}>
+            <div style={{ fontWeight: 700, color: a.valor > 0 ? 'var(--text)' : 'var(--text-mute)' }}>
+              {a.valor > 0 ? fmt(a.valor) : '—'}
+            </div>
+            <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>
+              {a.preco > 0 ? `${fmt(a.preco)} · ${fmtPct(pctCart)}` : 'sem cotação'}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 2px' }}>
-        <h2 style={{ margin: 0, fontSize: 15, color: 'var(--text-dim)' }}>Meus ativos <span style={{ color: 'var(--text-mute)' }}>· {ativos.length}</span></h2>
-      </div>
+      <h2 style={{ margin: '4px 2px', fontSize: 15, color: 'var(--text-dim)' }}>
+        Meus ativos <span style={{ color: 'var(--text-mute)' }}>· {ativos.length}</span>
+      </h2>
 
       {/* ações */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button className="btn btn-sm btn-primary" onClick={() => setShowForm(s => !s)}>
-          {showForm ? '✕ Cancelar' : '+ Novo'}
-        </button>
+        <button className="btn btn-sm btn-primary" onClick={() => setShowForm(s => !s)}>{showForm ? '✕ Cancelar' : '+ Novo'}</button>
         <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>⭱ Importar</button>
         <button className="btn btn-sm" onClick={handleExport}>⭳ Exportar</button>
         <button className="btn btn-sm btn-ghost" onClick={() => { if (confirm('Resetar? Alterações locais serão perdidas.')) resetAtivos(); }}>↺ Resetar</button>
@@ -322,7 +458,7 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, addAtiv
               <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Classe</label>
               <select className="input" value={novo.classe}
                 onChange={e => setNovo(p => ({ ...p, classe: e.target.value, subclasse: SUBCLASSES_MAP[e.target.value][0], tipo: TIPOS_MAP[e.target.value][0] }))}>
-                {CLASSES_LISTA.map(c => <option key={c} value={c}>{c}</option>)}
+                {CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -349,56 +485,49 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, addAtiv
         </div>
       )}
 
-      {/* estado vazio */}
-      {lista.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 14 }}>
-          Nenhum ativo carregado. Toque em <strong style={{ color: 'var(--accent)' }}>⭱ Importar</strong> e escolha seu JSON, ou use <strong style={{ color: 'var(--accent)' }}>+ Novo</strong>.
+      {/* filtros */}
+      {ativos.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+            {classesPresentes.map(c => (
+              <button key={c} onClick={() => setFiltro(c)}
+                className="btn btn-sm btn-ghost"
+                style={{ minHeight: 34, padding: '0 12px', fontSize: 13,
+                  borderColor: filtro === c ? (c === 'Todos' ? 'var(--accent)' : COR(c)) : 'var(--border)',
+                  color: filtro === c ? 'var(--text)' : 'var(--text-dim)',
+                  background: filtro === c ? 'var(--surface-2)' : 'transparent' }}>
+                {c}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setAgrupar(v => !v)} className="btn btn-sm btn-ghost"
+            style={{ minHeight: 34, padding: '0 12px', fontSize: 13, borderColor: agrupar ? 'var(--accent)' : 'var(--border)', color: agrupar ? 'var(--text)' : 'var(--text-dim)' }}>
+            {agrupar ? '▣ Agrupado' : '▢ Agrupar'}
+          </button>
         </div>
       )}
 
-      {/* lista de ativos (cards) */}
-      {lista.map(a => {
-        const cor       = MACRO[a.classe]?.cor ?? 'var(--text-dim)';
-        const pctCart   = totalGeral > 0 ? a.valor / totalGeral : 0;
-        const qtyVal    = editQty[a.id] !== undefined ? editQty[a.id] : a.qty;
-        return (
-          <div key={a.id} className="card" style={{ padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700 }}>
-                  <span style={{ width: 9, height: 9, borderRadius: 3, background: cor, flexShrink: 0 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nome}</span>
-                </div>
-                <div style={{ color: 'var(--text-mute)', fontSize: 12, marginTop: 3 }}>
-                  {a.classe} · {a.subclasse}{a.ticker ? ` · ${a.ticker}` : ''}
-                </div>
-              </div>
-              <button onClick={() => { if (confirm(`Remover ${a.nome}?`)) removeAtivo(a.id); }}
-                title="Remover" aria-label="Remover ativo"
-                style={{ background: 'none', border: 'none', color: 'var(--text-mute)', fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
-            </div>
+      {/* estado vazio */}
+      {ordenada.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 14 }}>
+          {ativos.length === 0
+            ? <>Nenhum ativo carregado. Toque em <strong style={{ color: 'var(--accent)' }}>⭱ Importar</strong> e escolha seu JSON, ou use <strong style={{ color: 'var(--accent)' }}>+ Novo</strong>.</>
+            : <>Nenhum ativo em <strong>{filtro}</strong>.</>}
+        </div>
+      )}
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 10 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: 'var(--text-mute)', fontSize: 12 }}>Qtd</span>
-                <input className="input num" type="number" inputMode="decimal" value={qtyVal}
-                  onChange={e => setEditQty(prev => ({ ...prev, [a.id]: e.target.value }))}
-                  onBlur={() => handleQtyBlur(a.id)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.target.blur(); } }}
-                  style={{ width: 110, minHeight: 40 }} />
-              </label>
-              <div className="num" style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 700, color: a.valor > 0 ? 'var(--text)' : 'var(--text-mute)' }}>
-                  {a.valor > 0 ? fmt(a.valor) : '—'}
-                </div>
-                <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>
-                  {a.preco > 0 ? `${fmt(a.preco)} · ${fmtPct(pctCart)}` : 'sem cotação'}
-                </div>
-              </div>
+      {/* lista (agrupada ou não) */}
+      {grupos.map(g => (
+        <div key={g.classe ?? 'todos'} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {g.classe && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '4px 2px 0', color: COR(g.classe), fontWeight: 700, fontSize: 13 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: COR(g.classe) }} />
+              {g.classe} <span style={{ color: 'var(--text-mute)', fontWeight: 500 }}>· {g.itens.length}</span>
             </div>
-          </div>
-        );
-      })}
+          )}
+          {g.itens.map(renderCard)}
+        </div>
+      ))}
     </section>
   );
 }
