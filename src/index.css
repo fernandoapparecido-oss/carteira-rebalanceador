@@ -1,3 +1,73 @@
+:root {
+  /* paleta */
+  --bg:        #0f1115;
+  --surface:   #171a21;
+  --surface-2: #1e222b;
+  --border:    #262b36;
+  --text:      #e7eaf0;
+  --text-dim:  #9aa3b2;
+  --text-mute: #5f6774;
+  --accent:    #5b9dff;
+  --good:      #46d19e;
+  --warn:      #f2c14e;
+  --bad:       #f2685f;
+
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; background: #111; }
+
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
 #root { width: 100%; }
+
+/* números tabulares para alinhar valores */
+.num { font-variant-numeric: tabular-nums; }
+
+/* elementos base amigáveis a toque */
+button { font-family: inherit; cursor: pointer; }
+input, select, button { font-size: 16px; } /* evita zoom no iOS */
+
+/* cartão padrão */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+/* botões */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; padding: 0 16px;
+  border-radius: 11px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text);
+  font-weight: 600; font-size: 15px;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #071023; }
+.btn-ghost   { background: transparent; }
+.btn-sm { min-height: 38px; padding: 0 12px; font-size: 14px; }
+
+/* campo de texto/numérico */
+.input {
+  width: 100%; min-height: 44px; padding: 0 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 11px; color: var(--text);
+}
+.input:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* barra de progresso */
+.bar { background: var(--surface-2); border-radius: 999px; height: 8px; width: 100%; overflow: hidden; }
+.bar > span { display: block; height: 100%; border-radius: 999px; transition: width .4s ease; }
+
+/* respeita a área segura do notch no mobile */
+.safe-b { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
