@@ -1,0 +1,6 @@
+name = "carteira-cotacoes"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Deploy com:  npx wrangler deploy   (dentro desta pasta cloudflare-worker/)
+# Após o deploy, a URL será algo como: https://carteira-cotacoes.SEU-SUBDOMINIO.workers.dev
