@@ -27,6 +27,14 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // Marcador de versão — permite confirmar qual código está no ar.
+    if (url.pathname === '/version') {
+      const h = corsHeaders();
+      h.set('Content-Type', 'application/json');
+      return new Response(JSON.stringify({ version: 'tesouro-csv-1', tesouro: 'csv', ok: true }), { headers: h });
+    }
+
     let target, cacheTtl, contentType;
     if (url.pathname === '/tesouro' || url.pathname.startsWith('/tesouro/')) {
       target      = TD_CSV;        // endpoint fixo; ignora o resto do caminho
