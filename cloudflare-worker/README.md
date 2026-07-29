@@ -1,7 +1,12 @@
 # Worker de cotações (Cloudflare)
 
-Proxy CORS para o Yahoo Finance. O front-end (GitHub Pages) chama este worker
-para buscar preços de ações, FIIs, ETFs, cripto e câmbio USD/BRL.
+Proxy CORS de cotações. O front-end (GitHub Pages) chama este worker para buscar:
+
+- **Ações, FIIs, ETFs, cripto e câmbio USD/BRL** → Yahoo Finance (qualquer caminho)
+- **Tesouro Direto (PU dos títulos)** → rota `/tesouro`
+
+> Ao atualizar o `worker.js` (ex.: para incluir a rota `/tesouro`), basta
+> **redeployar** pela mesma forma abaixo. A URL do worker não muda.
 
 ## Publicar o worker
 

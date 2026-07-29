@@ -20,6 +20,43 @@ async function fetchPreco(symbol) {
   }
 }
 
+// ── Tesouro Direto (via rota /tesouro do worker) ──
+const TESOURO_URL = `${API_BASE}/tesouro`;
+
+function normaliza(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Baixa a lista de títulos e devolve um mapa: nome normalizado → PU de resgate
+async function fetchTesouroMapa() {
+  const r = await fetch(TESOURO_URL);
+  const d = await r.json();
+  const lista = d?.response?.TrsrBdTradgList || [];
+  const mapa = {};
+  for (const item of lista) {
+    const b = item?.TrsrBd;
+    if (!b?.nm) continue;
+    const pu = b.untrRedVal ?? b.untrInvstmtVal; // PU de resgate (fallback: investimento)
+    if (pu != null) mapa[normaliza(b.nm)] = pu;
+  }
+  return mapa;
+}
+
+// Casa um ativo do usuário (pelo nome) com um título do mapa
+function achaPU(mapa, nome) {
+  const n = normaliza(nome);
+  if (mapa[n] != null) return mapa[n];
+  // fuzzy: mesmo ano + mesmo indexador, respeitando "com juros semestrais"
+  const ano = (n.match(/\b(20\d{2})\b/) || [])[1];
+  const idx = n.includes('selic') ? 'selic' : n.includes('ipca') ? 'ipca' : n.includes('prefix') ? 'prefix' : null;
+  const semestral = n.includes('semestr');
+  if (!ano || !idx) return null;
+  for (const [k, v] of Object.entries(mapa)) {
+    if (k.includes(ano) && k.includes(idx) && k.includes('semestr') === semestral) return v;
+  }
+  return null;
+}
+
 // Preços do Tesouro Direto (PU) — editados manualmente e salvos no navegador.
 const TES_KEY = 'carteira-tesouro-v1';
 function loadTesouro() {
@@ -76,11 +113,37 @@ export default function useCotacoes(ativos) {
       }
 
       setPrecos(novos);
+
+      // 3. Tesouro Direto (PU de resgate), casando pelo nome
+      const tesouroAtivos = ativos.filter(a => a.tipo === 'tesouro');
+      const semTesouro = [];
+      if (tesouroAtivos.length) {
+        try {
+          const mapa = await fetchTesouroMapa();
+          const novosT = {};
+          for (const a of tesouroAtivos) {
+            const pu = achaPU(mapa, a.nome);
+            if (pu != null) novosT[a.id] = pu;
+            else semTesouro.push(a.nome);
+          }
+          if (Object.keys(novosT).length) {
+            setTesouroPrices(prev => {
+              const next = { ...prev, ...novosT };
+              localStorage.setItem(TES_KEY, JSON.stringify(next));
+              return next;
+            });
+          }
+        } catch {
+          semTesouro.push('(falha ao buscar Tesouro)');
+        }
+      }
+
       setUltima(new Date());
 
-      if (semCotacao.length > 0) {
-        setErro(`Sem cotação para: ${semCotacao.join(', ')}`);
-      }
+      const avisos = [];
+      if (semCotacao.length) avisos.push(`Sem cotação: ${semCotacao.join(', ')}`);
+      if (semTesouro.length) avisos.push(`Tesouro não encontrado: ${semTesouro.join(', ')}`);
+      if (avisos.length) setErro(avisos.join(' · '));
     } catch (e) {
       setErro('Erro ao buscar cotações: ' + e.message);
     } finally {

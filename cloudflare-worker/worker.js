@@ -1,18 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Cloudflare Worker — proxy CORS para o Yahoo Finance.
+// Cloudflare Worker — proxy CORS para cotações.
 //
-// O navegador não pode chamar query1.finance.yahoo.com direto (bloqueio CORS).
-// Este worker repassa qualquer caminho recebido para o Yahoo e devolve a
-// resposta com os cabeçalhos CORS liberados. O front-end (GitHub Pages) chama:
-//     https://SEU-WORKER.workers.dev/v8/finance/chart/PETR4.SA?interval=1d&range=1d
+// Rotas:
+//   /tesouro                → Tesouro Direto (JSON com o PU de todos os títulos)
+//   qualquer outro caminho  → Yahoo Finance (ações, FIIs, ETFs, cripto, câmbio)
 //
-// Custo: repassa apenas dados públicos de cotação. Plano gratuito da Cloudflare
+// O navegador não pode chamar esses endpoints direto (bloqueio CORS); este
+// worker repassa a chamada e devolve a resposta com CORS liberado.
+//
+// Custo: apenas dados públicos de cotação. Plano gratuito da Cloudflare
 // (100k req/dia, compartilhado na conta) cobre folgadamente o uso pessoal.
 //
-// Opcional: troque '*' abaixo pelo seu domínio do GitHub Pages para restringir
-// quem pode usar o worker, ex.: 'https://SEU-USUARIO.github.io'.
+// Opcional: troque '*' abaixo pelo seu domínio do GitHub Pages para restringir.
 // ─────────────────────────────────────────────────────────────────────────
-const UPSTREAM     = 'https://query1.finance.yahoo.com';
+const YF_UPSTREAM = 'https://query1.finance.yahoo.com';
+const TD_URL      = 'https://www.tesourodireto.com.br/json/br/com/b3/tesourodireto/service/api/treasurybondsinfo.json';
 const ALLOW_ORIGIN = '*';
 
 export default {
@@ -24,14 +26,21 @@ export default {
       return new Response('Method Not Allowed', { status: 405, headers: corsHeaders() });
     }
 
-    const url    = new URL(request.url);
-    const target = UPSTREAM + url.pathname + url.search;
+    const url = new URL(request.url);
+    let target, cacheTtl;
+    if (url.pathname === '/tesouro' || url.pathname.startsWith('/tesouro/')) {
+      target   = TD_URL;   // endpoint fixo do Tesouro; ignora o resto do caminho
+      cacheTtl = 300;      // PU muda poucas vezes ao dia
+    } else {
+      target   = YF_UPSTREAM + url.pathname + url.search;
+      cacheTtl = 30;
+    }
 
     let upstream;
     try {
       upstream = await fetch(target, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (carteira-rebalanceador)' },
-        cf: { cacheTtl: 30, cacheEverything: true },
+        headers: { 'User-Agent': 'Mozilla/5.0 (carteira-rebalanceador)', 'Accept': 'application/json' },
+        cf: { cacheTtl, cacheEverything: true },
       });
     } catch (err) {
       return json({ error: 'upstream_fetch_failed', detail: String(err) }, 502);
