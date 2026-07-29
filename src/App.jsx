@@ -27,7 +27,7 @@ function Barra({ atual, meta, cor }) {
 /* ══════════════════════════════════════ */
 export default function App() {
   const [aporte, setAporte] = useState('');
-  const { ativos, updateQty, addAtivo, removeAtivo, resetAtivos, importAtivos } = useAtivos();
+  const { ativos, updateQty, updateAtivo, addAtivo, removeAtivo, resetAtivos, importAtivos } = useAtivos();
   const { getPreco, tesouroPrices, setTesouroPrice, loading, erro, ultimaAtualizacao, atualizar } = useCotacoes(ativos);
   const { macro: macroMetas, sub: subMetas, updateMacro, updateSub, resetMetas, macroSoma } = useEstrategia();
 
@@ -129,7 +129,7 @@ export default function App() {
         {/* ── Meus ativos ── */}
         <AtivosSection
           ativos={ativos} valoresPorAtivo={valoresPorAtivo}
-          totalGeral={totalAtual} updateQty={updateQty} addAtivo={addAtivo}
+          totalGeral={totalAtual} updateQty={updateQty} updateAtivo={updateAtivo} addAtivo={addAtivo}
           removeAtivo={removeAtivo} resetAtivos={resetAtivos} importAtivos={importAtivos} />
       </main>
     </div>
@@ -314,14 +314,40 @@ const TIPOS_MAP = {
   Cripto:        ['cripto'],
 };
 const NOVO_BLANK = { id:'', nome:'', ticker:'', classe:'Ações', subclasse:'Ações', qty:'', tipo:'b3' };
+// Todos os tipos ficam disponíveis na edição: classe/subclasse (alocação) e
+// tipo (como buscar a cotação) são independentes — ex.: um ETF da B3 pode ser
+// alocado em "Internacional" mantendo tipo 'b3' para não quebrar o preço.
+const TODOS_TIPOS = ['b3', 'tesouro', 'usd', 'cripto'];
 
-function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, addAtivo, removeAtivo, resetAtivos, importAtivos }) {
+function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateAtivo, addAtivo, removeAtivo, resetAtivos, importAtivos }) {
   const [editQty, setEditQty]   = useState({});
   const [showForm, setShowForm] = useState(false);
   const [novo, setNovo]         = useState(NOVO_BLANK);
   const [filtro, setFiltro]     = useState('Todos');
   const [agrupar, setAgrupar]   = useState(false);
+  const [editId, setEditId]     = useState(null);
+  const [editData, setEditData] = useState(null);
   const fileRef                 = useRef(null);
+
+  const startEdit = (a) => {
+    setEditId(a.id);
+    setEditData({ nome: a.nome, ticker: a.ticker ?? '', classe: a.classe, subclasse: a.subclasse, tipo: a.tipo });
+  };
+  const cancelEdit = () => { setEditId(null); setEditData(null); };
+  const changeEditClasse = (v) => setEditData(d => ({
+    ...d, classe: v,
+    subclasse: (SUBCLASSES_MAP[v] || []).includes(d.subclasse) ? d.subclasse : (SUBCLASSES_MAP[v] || [''])[0],
+  }));
+  const saveEdit = () => {
+    updateAtivo(editId, {
+      nome:      editData.nome || editId,
+      ticker:    editData.ticker ? editData.ticker.trim() : null,
+      classe:    editData.classe,
+      subclasse: editData.subclasse,
+      tipo:      editData.tipo,
+    });
+    cancelEdit();
+  };
 
   const handleQtyBlur = (id) => {
     if (editQty[id] !== undefined) {
@@ -398,9 +424,14 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, addAtiv
               {a.classe} · {a.subclasse}{a.ticker ? ` · ${a.ticker}` : ''}
             </div>
           </div>
-          <button onClick={() => { if (confirm(`Remover ${a.nome}?`)) removeAtivo(a.id); }}
-            title="Remover" aria-label="Remover ativo"
-            style={{ background: 'none', border: 'none', color: 'var(--text-mute)', fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+            <button onClick={() => (editId === a.id ? cancelEdit() : startEdit(a))}
+              title="Editar classificação" aria-label="Editar ativo"
+              style={{ background: 'none', border: 'none', color: editId === a.id ? 'var(--accent)' : 'var(--text-mute)', fontSize: 16, lineHeight: 1, padding: 4 }}>✎</button>
+            <button onClick={() => { if (confirm(`Remover ${a.nome}?`)) removeAtivo(a.id); }}
+              title="Remover" aria-label="Remover ativo"
+              style={{ background: 'none', border: 'none', color: 'var(--text-mute)', fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 10 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -420,6 +451,48 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, addAtiv
             </div>
           </div>
         </div>
+
+        {/* edição de classificação (mover entre estratégias) */}
+        {editId === a.id && editData && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Nome</label>
+                <input className="input" value={editData.nome}
+                  onChange={e => setEditData(d => ({ ...d, nome: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Ticker</label>
+                <input className="input" value={editData.ticker} placeholder="(vazio = tesouro)"
+                  onChange={e => setEditData(d => ({ ...d, ticker: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Classe (alocação)</label>
+                <select className="input" value={editData.classe} onChange={e => changeEditClasse(e.target.value)}>
+                  {CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Subclasse</label>
+                <select className="input" value={editData.subclasse}
+                  onChange={e => setEditData(d => ({ ...d, subclasse: e.target.value }))}>
+                  {(SUBCLASSES_MAP[editData.classe] || []).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Tipo (cotação)</label>
+                <select className="input" value={editData.tipo}
+                  onChange={e => setEditData(d => ({ ...d, tipo: e.target.value }))}>
+                  {TODOS_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-sm btn-primary" onClick={saveEdit} style={{ flex: 1 }}>Salvar</button>
+              <button className="btn btn-sm btn-ghost" onClick={cancelEdit}>Cancelar</button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };

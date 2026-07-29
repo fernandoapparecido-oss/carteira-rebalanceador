@@ -24,6 +24,15 @@ export default function useAtivos() {
     });
   }, []);
 
+  // Atualiza campos de um ativo existente (classe, subclasse, tipo, nome, ticker…)
+  const updateAtivo = useCallback((id, patch) => {
+    setAtivos(prev => {
+      const next = prev.map(a => a.id === id ? { ...a, ...patch } : a);
+      save(next);
+      return next;
+    });
+  }, []);
+
   const addAtivo = useCallback((ativo) => {
     setAtivos(prev => {
       const next = [...prev, ativo];
@@ -51,5 +60,5 @@ export default function useAtivos() {
     setAtivos(lista);
   }, []);
 
-  return { ativos, updateQty, addAtivo, removeAtivo, resetAtivos, importAtivos };
+  return { ativos, updateQty, updateAtivo, addAtivo, removeAtivo, resetAtivos, importAtivos };
 }
