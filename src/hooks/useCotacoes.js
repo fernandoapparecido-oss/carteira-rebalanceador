@@ -20,18 +20,18 @@ async function fetchPreco(symbol) {
   }
 }
 
-// Preços manuais para Tesouro Direto (sem API pública)
-export const TESOURO_DEFAULTS = {
-  tsel2028:  16500,
-  tsel2031:  16200,
-  tipca2045: 4800,
-  tipca2050: 3900,
-  tipca2026: 12100,
-};
+// Preços do Tesouro Direto (PU) — editados manualmente e salvos no navegador.
+const TES_KEY = 'carteira-tesouro-v1';
+function loadTesouro() {
+  try {
+    const raw = localStorage.getItem(TES_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
 
 export default function useCotacoes(ativos) {
   const [precos, setPrecos]               = useState({});
-  const [tesouroPrices, setTesouroPrices] = useState(TESOURO_DEFAULTS);
+  const [tesouroPrices, setTesouroPrices] = useState(() => loadTesouro() ?? {});
   const [loading, setLoading]             = useState(false);
   const [erro, setErro]                   = useState(null);
   const [ultimaAtualizacao, setUltima]    = useState(null);
@@ -89,7 +89,11 @@ export default function useCotacoes(ativos) {
   }, [ativos]);
 
   const setTesouroPrice = useCallback((id, valor) => {
-    setTesouroPrices(prev => ({ ...prev, [id]: Number(valor) }));
+    setTesouroPrices(prev => {
+      const next = { ...prev, [id]: Number(valor) };
+      localStorage.setItem(TES_KEY, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   const getPreco = useCallback((ativo) => {

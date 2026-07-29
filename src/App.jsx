@@ -130,7 +130,8 @@ export default function App() {
         <AtivosSection
           ativos={ativos} valoresPorAtivo={valoresPorAtivo}
           totalGeral={totalAtual} updateQty={updateQty} updateAtivo={updateAtivo} addAtivo={addAtivo}
-          removeAtivo={removeAtivo} resetAtivos={resetAtivos} importAtivos={importAtivos} />
+          removeAtivo={removeAtivo} resetAtivos={resetAtivos} importAtivos={importAtivos}
+          tesouroPrices={tesouroPrices} setTesouroPrice={setTesouroPrice} />
       </main>
     </div>
   );
@@ -319,7 +320,7 @@ const NOVO_BLANK = { id:'', nome:'', ticker:'', classe:'Ações', subclasse:'Aç
 // alocado em "Internacional" mantendo tipo 'b3' para não quebrar o preço.
 const TODOS_TIPOS = ['b3', 'tesouro', 'usd', 'cripto'];
 
-function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateAtivo, addAtivo, removeAtivo, resetAtivos, importAtivos }) {
+function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateAtivo, addAtivo, removeAtivo, resetAtivos, importAtivos, tesouroPrices, setTesouroPrice }) {
   const [editQty, setEditQty]   = useState({});
   const [showForm, setShowForm] = useState(false);
   const [novo, setNovo]         = useState(NOVO_BLANK);
@@ -443,11 +444,22 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
               style={{ width: 110, minHeight: 40 }} />
           </label>
           <div className="num" style={{ textAlign: 'right' }}>
+            {a.tipo === 'tesouro' && (
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginBottom: 4 }}>
+                <span style={{ color: 'var(--text-mute)', fontSize: 12 }}>PU R$</span>
+                <input className="input num" type="number" inputMode="decimal" placeholder="0,00"
+                  value={tesouroPrices[a.id] ?? ''}
+                  onChange={e => setTesouroPrice(a.id, e.target.value)}
+                  style={{ width: 100, minHeight: 38, textAlign: 'right' }} />
+              </label>
+            )}
             <div style={{ fontWeight: 700, color: a.valor > 0 ? 'var(--text)' : 'var(--text-mute)' }}>
               {a.valor > 0 ? fmt(a.valor) : '—'}
             </div>
             <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>
-              {a.preco > 0 ? `${fmt(a.preco)} · ${fmtPct(pctCart)}` : 'sem cotação'}
+              {a.tipo === 'tesouro'
+                ? (a.valor > 0 ? fmtPct(pctCart) : 'informe o PU')
+                : (a.preco > 0 ? `${fmt(a.preco)} · ${fmtPct(pctCart)}` : 'sem cotação')}
             </div>
           </div>
         </div>
