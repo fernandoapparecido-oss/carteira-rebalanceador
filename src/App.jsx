@@ -39,6 +39,16 @@ export default function App() {
   const aporteNum     = Number(aporte) || 0;
   const totalCarteira = totalAtual + aporteNum;
 
+  // Rentabilidade — considera só ativos com preço médio informado e com cotação
+  const rent = useMemo(() => {
+    let investido = 0, atual = 0;
+    for (const a of valoresPorAtivo) {
+      if (a.precoMedio > 0 && a.preco > 0) { investido += a.precoMedio * a.qty; atual += a.valor; }
+    }
+    const resultado = atual - investido;
+    return { investido, atual, resultado, pct: investido > 0 ? resultado / investido : 0 };
+  }, [valoresPorAtivo]);
+
   const porClasse = useMemo(() => {
     const m = {};
     for (const a of valoresPorAtivo) m[a.classe] = (m[a.classe] || 0) + a.valor;
@@ -107,6 +117,27 @@ export default function App() {
           </div>
           {erro && <div style={{ color: 'var(--warn)', fontSize: 13 }}>⚠ {erro}</div>}
         </section>
+
+        {/* ── Resultado (rentabilidade) ── */}
+        {rent.investido > 0 && (
+          <section className="card num" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <div>
+              <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>Investido</div>
+              <div style={{ fontWeight: 700 }}>{fmt(rent.investido)}</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>Atual</div>
+              <div style={{ fontWeight: 700 }}>{fmt(rent.atual)}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>Resultado</div>
+              <div style={{ fontWeight: 800, color: rent.resultado >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+                {rent.resultado >= 0 ? '+' : ''}{fmt(rent.resultado)}
+                <span style={{ fontSize: 12 }}> ({rent.resultado >= 0 ? '+' : ''}{fmtPct(rent.pct)})</span>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* ── Onde aportar (com drill-down por subclasse/ativo) ── */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -314,7 +345,7 @@ const TIPOS_MAP = {
   Internacional: ['usd'],
   Cripto:        ['cripto'],
 };
-const NOVO_BLANK = { id:'', nome:'', ticker:'', classe:'Ações', subclasse:'Ações', qty:'', tipo:'b3' };
+const NOVO_BLANK = { id:'', nome:'', ticker:'', classe:'Ações', subclasse:'Ações', qty:'', tipo:'b3', precoMedio:'' };
 // Todos os tipos ficam disponíveis na edição: classe/subclasse (alocação) e
 // tipo (como buscar a cotação) são independentes — ex.: um ETF da B3 pode ser
 // alocado em "Internacional" mantendo tipo 'b3' para não quebrar o preço.
@@ -332,7 +363,7 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
 
   const startEdit = (a) => {
     setEditId(a.id);
-    setEditData({ nome: a.nome, ticker: a.ticker ?? '', classe: a.classe, subclasse: a.subclasse, tipo: a.tipo });
+    setEditData({ nome: a.nome, ticker: a.ticker ?? '', classe: a.classe, subclasse: a.subclasse, tipo: a.tipo, precoMedio: a.precoMedio ?? '' });
   };
   const cancelEdit = () => { setEditId(null); setEditData(null); };
   const changeEditClasse = (v) => setEditData(d => ({
@@ -346,6 +377,7 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
       classe:    editData.classe,
       subclasse: editData.subclasse,
       tipo:      editData.tipo,
+      precoMedio: Number(editData.precoMedio) || 0,
     });
     cancelEdit();
   };
@@ -359,7 +391,7 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
 
   const handleAdd = () => {
     if (!novo.id || !novo.nome || Number(novo.qty) <= 0) return;
-    addAtivo({ ...novo, qty: Number(novo.qty) });
+    addAtivo({ ...novo, qty: Number(novo.qty), precoMedio: Number(novo.precoMedio) || 0 });
     setNovo(NOVO_BLANK);
     setShowForm(false);
   };
@@ -389,6 +421,7 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
         qty:       Number(a.qty) || 0,
         tipo:      a.tipo || 'b3',
         ticker:    a.ticker ?? null,
+        precoMedio: Number(a.precoMedio) || 0,
       }));
       if (limpos.some((a) => !a.id || !a.classe || !a.subclasse)) throw new Error('há ativos sem id/classe/subclasse');
       importAtivos(limpos);
@@ -413,6 +446,10 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
     const cor     = COR(a.classe);
     const pctCart = totalGeral > 0 ? a.valor / totalGeral : 0;
     const qtyVal  = editQty[a.id] !== undefined ? editQty[a.id] : a.qty;
+    const temPM   = a.precoMedio > 0 && a.preco > 0;
+    const custo   = a.precoMedio * a.qty;
+    const res     = temPM ? a.valor - custo : 0;
+    const resPct  = custo > 0 ? res / custo : 0;
     return (
       <div key={a.id} className="card" style={{ padding: 12 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
@@ -464,6 +501,15 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
           </div>
         </div>
 
+        {temPM && (
+          <div className="num" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', fontSize: 13 }}>
+            <span style={{ color: 'var(--text-mute)' }}>PM {fmt(a.precoMedio)}</span>
+            <span style={{ color: res >= 0 ? 'var(--good)' : 'var(--bad)', fontWeight: 700 }}>
+              {res >= 0 ? '+' : ''}{fmt(res)} ({res >= 0 ? '+' : ''}{fmtPct(resPct)})
+            </span>
+          </div>
+        )}
+
         {/* edição de classificação (mover entre estratégias) */}
         {editId === a.id && editData && (
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -497,6 +543,11 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
                   onChange={e => setEditData(d => ({ ...d, tipo: e.target.value }))}>
                   {TODOS_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Preço médio</label>
+                <input className="input num" type="number" inputMode="decimal" placeholder="0,00" value={editData.precoMedio}
+                  onChange={e => setEditData(d => ({ ...d, precoMedio: e.target.value }))} />
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -564,6 +615,11 @@ function AtivosSection({ ativos, valoresPorAtivo, totalGeral, updateQty, updateA
               <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Quantidade</label>
               <input className="input num" type="number" inputMode="decimal" value={novo.qty}
                 onChange={e => setNovo(p => ({ ...p, qty: e.target.value }))} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ color: 'var(--text-mute)', fontSize: 12 }}>Preço médio (opcional)</label>
+              <input className="input num" type="number" inputMode="decimal" placeholder="0,00" value={novo.precoMedio}
+                onChange={e => setNovo(p => ({ ...p, precoMedio: e.target.value }))} />
             </div>
           </div>
           <button className="btn btn-primary" onClick={handleAdd}>Adicionar</button>
