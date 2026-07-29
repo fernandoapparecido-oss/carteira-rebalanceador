@@ -27,17 +27,56 @@ function normaliza(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// Baixa a lista de títulos e devolve um mapa: nome normalizado → PU de resgate
-async function fetchTesouroMapa() {
-  const r = await fetch(TESOURO_URL);
-  const d = await r.json();
-  const lista = d?.response?.TrsrBdTradgList || [];
+// Parseia o CSV oficial (Tesouro Transparente) e devolve um mapa:
+//   nome normalizado ("tesouro selic 2028") → PU de venda (resgate) mais recente
+// Colunas: Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda
+//          Manha;PU Compra Manha;PU Venda Manha;PU Base Manha (decimal com vírgula)
+function parseTesouroCsv(txt) {
+  const linhas = txt.split(/\r?\n/);
+  if (linhas.length < 2) return {};
+  const head = linhas[0].split(';').map(s => s.trim());
+  const iTipo = head.indexOf('Tipo Titulo');
+  const iVenc = head.indexOf('Data Vencimento');
+  const iBase = head.indexOf('Data Base');
+  const iPU   = head.indexOf('PU Venda Manha');
+  if (iTipo < 0 || iVenc < 0 || iBase < 0 || iPU < 0) return {};
+
+  const melhor = {}; // key → { ord: 'yyyymmdd', pu }
+  for (let i = 1; i < linhas.length; i++) {
+    const l = linhas[i];
+    if (!l) continue;
+    const col = l.split(';');
+    const tipo = col[iTipo], venc = col[iVenc], base = col[iBase], puStr = col[iPU];
+    if (!tipo || !venc || !base) continue;
+    const ano = (venc.match(/(\d{4})/) || [])[1];
+    if (!ano) continue;
+    const key = normaliza(`${tipo} ${ano}`);
+    const bp = base.split('/'); // dd/mm/yyyy
+    const ord = bp.length === 3 ? bp[2] + bp[1] + bp[0] : base;
+    const pu = Number(String(puStr || '').replace(/\./g, '').replace(',', '.'));
+    if (!isFinite(pu) || pu <= 0) continue;
+    if (!melhor[key] || ord > melhor[key].ord) melhor[key] = { ord, pu };
+  }
   const mapa = {};
-  for (const item of lista) {
-    const b = item?.TrsrBd;
-    if (!b?.nm) continue;
-    const pu = b.untrRedVal ?? b.untrInvstmtVal; // PU de resgate (fallback: investimento)
-    if (pu != null) mapa[normaliza(b.nm)] = pu;
+  for (const k of Object.keys(melhor)) mapa[k] = melhor[k].pu;
+  return mapa;
+}
+
+// Obtém o mapa do Tesouro com cache de 1x/dia (o CSV é grande, ~14 MB)
+const CSV_CACHE_KEY = 'carteira-tesouro-csv-v1';
+function hojeStr() { return new Date().toISOString().slice(0, 10); }
+
+async function obterTesouroMapa() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CSV_CACHE_KEY) || 'null');
+    if (c && c.dia === hojeStr() && c.mapa && Object.keys(c.mapa).length) return c.mapa;
+  } catch { /* ignora cache inválido */ }
+
+  const r = await fetch(TESOURO_URL);
+  const txt = await r.text();
+  const mapa = parseTesouroCsv(txt);
+  if (Object.keys(mapa).length) {
+    try { localStorage.setItem(CSV_CACHE_KEY, JSON.stringify({ dia: hojeStr(), mapa })); } catch { /* quota */ }
   }
   return mapa;
 }
@@ -119,7 +158,7 @@ export default function useCotacoes(ativos) {
       const semTesouro = [];
       if (tesouroAtivos.length) {
         try {
-          const mapa = await fetchTesouroMapa();
+          const mapa = await obterTesouroMapa();
           const novosT = {};
           for (const a of tesouroAtivos) {
             const pu = achaPU(mapa, a.nome);
