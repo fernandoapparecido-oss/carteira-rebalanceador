@@ -148,8 +148,7 @@ export default function App() {
             <ClasseCard key={classe}
               classe={classe} meta={macroMetas[classe] || 0} cor={COR(classe)}
               valorAtual={porClasse[classe] || 0} totalCarteira={totalCarteira}
-              aporteNum={aporteNum} subclasses={subclassesDe(classe)}
-              tesouroPrices={tesouroPrices} setTesouroPrice={setTesouroPrice} />
+              aporteNum={aporteNum} subclasses={subclassesDe(classe)} />
           ))}
         </section>
 
@@ -169,7 +168,7 @@ export default function App() {
 }
 
 /* ══ Card de classe com drill-down ══ */
-function ClasseCard({ classe, meta, cor, valorAtual, totalCarteira, aporteNum, subclasses, tesouroPrices, setTesouroPrice }) {
+function ClasseCard({ classe, meta, cor, valorAtual, totalCarteira, aporteNum, subclasses }) {
   const [aberto, setAberto] = useState(false);
   const pctAtual   = totalCarteira > 0 ? valorAtual / totalCarteira : 0;
   const desvio     = pctAtual - meta;
@@ -235,16 +234,9 @@ function ClasseCard({ classe, meta, cor, valorAtual, totalCarteira, aporteNum, s
                   {ativos.length > 0 ? ativos.map(a => (
                     <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
                       <span style={{ color: 'var(--text-dim)' }}>{a.nome}</span>
-                      {a.tipo === 'tesouro' ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <span style={{ color: 'var(--text-mute)', fontSize: 12 }}>R$</span>
-                          <input className="input num" type="number" inputMode="decimal" value={tesouroPrices[a.id] ?? ''}
-                            onChange={e => setTesouroPrice(a.id, e.target.value)}
-                            style={{ width: 96, minHeight: 36, padding: '0 8px', fontSize: 14 }} />
-                        </span>
-                      ) : (
-                        <span className="num" style={{ color: 'var(--text-mute)' }}>{fmt(a.valor)}</span>
-                      )}
+                      <span className="num" style={{ color: a.valor > 0 ? 'var(--text-dim)' : 'var(--text-mute)' }}>
+                        {a.valor > 0 ? fmt(a.valor) : (a.tipo === 'tesouro' ? 'informe o PU' : 'sem cotação')}
+                      </span>
                     </div>
                   )) : (
                     <span style={{ color: abaixo ? cor : 'var(--text-mute)', fontSize: 13 }}>
