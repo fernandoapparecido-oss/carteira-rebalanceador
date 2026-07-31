@@ -171,9 +171,10 @@ export default function App() {
 /* ══ Card de classe com drill-down ══ */
 function ClasseCard({ classe, meta, cor, valorAtual, totalCarteira, aporteNum, subclasses, tesouroPrices, setTesouroPrice }) {
   const [aberto, setAberto] = useState(false);
-  const pctAtual = totalCarteira > 0 ? valorAtual / totalCarteira : 0;
-  const desvio   = pctAtual - meta;
-  const gap      = Math.max(0, meta * totalCarteira - valorAtual);
+  const pctAtual   = totalCarteira > 0 ? valorAtual / totalCarteira : 0;
+  const desvio     = pctAtual - meta;
+  const alvoClasse = meta * totalCarteira;            // quanto deveria ter nesta classe (R$)
+  const gap        = Math.max(0, alvoClasse - valorAtual);
 
   return (
     <div className="card" style={{ padding: 14 }}>
@@ -190,8 +191,8 @@ function ClasseCard({ classe, meta, cor, valorAtual, totalCarteira, aporteNum, s
       </button>
       <Barra atual={pctAtual} meta={meta} cor={cor} />
       <div className="num" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, color: 'var(--text-mute)', fontSize: 13 }}>
-        <span>Atual <strong style={{ color: 'var(--text-dim)' }}>{fmtPct(pctAtual)}</strong> · {fmt(valorAtual)}</span>
-        <span>Meta {fmtPct(meta)}</span>
+        <span>Tem <strong style={{ color: 'var(--text-dim)' }}>{fmt(valorAtual)}</strong> · {fmtPct(pctAtual)}</span>
+        <span>Meta <strong style={{ color: 'var(--text-dim)' }}>{fmt(alvoClasse)}</strong> · {fmtPct(meta)}</span>
       </div>
       {gap > 0 && (
         <div className="num" style={{ marginTop: 10, background: 'rgba(70,209,158,.1)', border: '1px solid rgba(70,209,158,.25)', borderRadius: 9, padding: '8px 10px', fontSize: 14, color: 'var(--good)', fontWeight: 600 }}>
@@ -206,6 +207,8 @@ function ClasseCard({ classe, meta, cor, valorAtual, totalCarteira, aporteNum, s
           {subclasses.map(({ sub, meta: metaSub, pctDentro, desvio: dSub, valorSub, ativos }) => {
             const abaixo = dSub < -0.001;
             const temSub = classe !== 'Ações' && classe !== 'FIIs'; // Ações/FIIs: subclasse única, não faz sentido detalhar %
+            const alvoSub  = metaSub * alvoClasse;                  // quanto deveria ter nesta subclasse (R$)
+            const faltaSub = Math.max(0, alvoSub - valorSub);
             return (
               <div key={sub} style={{ background: 'var(--surface-2)', borderRadius: 11, padding: 12, borderLeft: `3px solid ${abaixo ? cor : 'transparent'}` }}>
                 {temSub && (
@@ -217,9 +220,15 @@ function ClasseCard({ classe, meta, cor, valorAtual, totalCarteira, aporteNum, s
                       <DesvioChip desvio={dSub} />
                     </div>
                     <Barra atual={pctDentro} meta={metaSub} cor={cor} />
-                    <div className="num" style={{ fontSize: 12, color: 'var(--text-mute)', margin: '6px 0 8px' }}>
-                      {fmtPct(pctDentro)} / meta {fmtPct(metaSub)} — {fmt(valorSub)}
+                    <div className="num" style={{ fontSize: 12, color: 'var(--text-mute)', margin: '6px 0 4px' }}>
+                      Tem {fmt(valorSub)} · Meta {fmt(alvoSub)}
+                      <span style={{ opacity: .7 }}> ({fmtPct(pctDentro)}/{fmtPct(metaSub)})</span>
                     </div>
+                    {faltaSub > 0 && (
+                      <div className="num" style={{ fontSize: 13, color: 'var(--good)', fontWeight: 600, marginBottom: 8 }}>
+                        Faltam {fmt(faltaSub)}{aporteNum > 0 ? ` · aportar ${fmt(Math.min(faltaSub, aporteNum))}` : ''}
+                      </div>
+                    )}
                   </>
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
